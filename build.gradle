@@ -29,6 +29,8 @@ repositories {
 			password = project.findProperty('githubToken') ?: System.getenv('githubToken')
 		}
 	}
+	maven { url 'https://packages.confluent.io/maven' } // For Kafka dependencies
+	maven { url 'https://maven.google.com' } // For Firebase
 }
 
 ext {
@@ -36,8 +38,6 @@ ext {
 }
 
 dependencies {
-
-
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -59,6 +59,10 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
 	// For reactive Spring Data MongoDB
 	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
+	// Firebase Admin SDK for FCM
+	implementation 'com.google.firebase:firebase-admin:9.3.0'
+	// Spring Kafka for Kafka integration
+	implementation 'org.springframework.kafka:spring-kafka:3.2.3'
 	// Google API Client for OAuth2
 	implementation 'com.google.api-client:google-api-client:2.7.0'
 	implementation 'com.google.auth:google-auth-library-oauth2-http:1.23.0'
@@ -72,9 +76,6 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation "org.testcontainers:junit-jupiter:1.17.6"
-
-
-
 }
 
 dependencyManagement {
