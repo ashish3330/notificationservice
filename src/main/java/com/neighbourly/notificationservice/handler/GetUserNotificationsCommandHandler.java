@@ -64,11 +64,15 @@ public class GetUserNotificationsCommandHandler implements CommandHandler<GetUse
         NotificationResponseDTO response = new NotificationResponseDTO();
         response.setNotificationId(notification.getNotificationId());
         response.setUserId(notification.getUserId());
+        response.setServiceId(notification.getServiceId());
+        response.setOrderId(notification.getOrderId());
         response.setTypeId(notification.getTypeId());
         response.setTypeName(notificationType.getTypeName());
         response.setContent(notification.getContent());
         response.setRead(notification.isRead());
+        response.setInformational(notification.isInformational());
         response.setCreatedAt(notification.getCreatedAt());
+        response.setModifiedAt(notification.getModifiedAt());
         return response;
     }
 }

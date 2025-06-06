@@ -9,11 +9,13 @@ import lombok.Setter;
 @Getter
 public class NotificationRequestDTO {
 
-    // Getters and Setters
     @NotBlank(message = "Notification content is mandatory")
     private String content;
 
     @NotNull(message = "Notification type ID is mandatory")
     private Long typeId;
 
+    private Long serviceId;
+
+    private Long orderId;
 }

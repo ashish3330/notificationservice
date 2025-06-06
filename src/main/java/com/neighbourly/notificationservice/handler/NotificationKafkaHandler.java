@@ -1,9 +1,6 @@
 package com.neighbourly.notificationservice.handler;
 
-import com.neighbourly.commonservice.dispatcher.CommandHandler;
-import com.neighbourly.commonservice.errorhandling.Either;
-import com.neighbourly.notificationservice.command.CreateNotificationCommand;
-import com.neighbourly.notificationservice.dto.NotificationRequestDTO;
+import com.neighbourly.notificationservice.dto.NotificationMessage;
 import com.neighbourly.notificationservice.dto.NotificationResponseDTO;
 import com.neighbourly.notificationservice.entity.Notification;
 import com.neighbourly.notificationservice.entity.NotificationType;
@@ -13,61 +10,60 @@ import com.neighbourly.notificationservice.repository.NotificationRepository;
 import com.neighbourly.notificationservice.repository.NotificationTypeRepository;
 import com.neighbourly.notificationservice.repository.UserDeviceRepository;
 import com.neighbourly.notificationservice.service.PushNotificationService;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
-public class CreateNotificationCommandHandler implements CommandHandler<CreateNotificationCommand, NotificationResponseDTO> {
+public class NotificationKafkaHandler {
 
     private final NotificationRepository notificationRepository;
     private final NotificationTypeRepository notificationTypeRepository;
     private final UserDeviceRepository userDeviceRepository;
     private final PushNotificationService pushNotificationService;
+    private final KafkaTemplate<String, NotificationResponseDTO> kafkaTemplate;
 
-    public CreateNotificationCommandHandler(NotificationRepository notificationRepository,
-                                            NotificationTypeRepository notificationTypeRepository,
-                                            UserDeviceRepository userDeviceRepository,
-                                            PushNotificationService pushNotificationService) {
+    public NotificationKafkaHandler(NotificationRepository notificationRepository,
+                                    NotificationTypeRepository notificationTypeRepository,
+                                    UserDeviceRepository userDeviceRepository,
+                                    PushNotificationService pushNotificationService,
+                                    KafkaTemplate<String, NotificationResponseDTO> kafkaTemplate) {
         this.notificationRepository = notificationRepository;
         this.notificationTypeRepository = notificationTypeRepository;
         this.userDeviceRepository = userDeviceRepository;
         this.pushNotificationService = pushNotificationService;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
-    @Override
-    public Either<String, NotificationResponseDTO> handle(CreateNotificationCommand command) {
+    @KafkaListener(topics = "notification.create", groupId = "notification-group")
+    public void consumeNotificationMessage(NotificationMessage message) {
         try {
-            Long userId = command.getUserId();
-            if (userId == null) {
-                return Either.left("User ID is required");
-            }
-
-            NotificationRequestDTO dto = command.getRequestDTO();
-            if (dto.getContent() == null || dto.getContent().isEmpty()) {
-                return Either.left("Notification content is required");
-            }
-            if (dto.getTypeId() == null) {
-                return Either.left("Notification type ID is required");
+            // Validate message
+            if (message.getUserId() == null || message.getTypeId() == null ||
+                    message.getContent() == null || message.getContent().isEmpty()) {
+                throw new NotificationException("Invalid notification message: userId, typeId, and content are required");
             }
 
             // Validate notification type
-            NotificationType notificationType = notificationTypeRepository.findById(dto.getTypeId())
-                    .orElseThrow(() -> new NotificationException("Notification type not found with ID: " + dto.getTypeId()));
+            NotificationType notificationType = notificationTypeRepository.findById(message.getTypeId())
+                    .orElseThrow(() -> new NotificationException("Notification type not found with ID: " + message.getTypeId()));
 
+            // Create and save notification
             Notification notification = new Notification();
-            notification.setUserId(userId);
-            notification.setServiceId(dto.getServiceId());
-            notification.setOrderId(dto.getOrderId());
-            notification.setTypeId(dto.getTypeId());
-            notification.setContent(dto.getContent());
+            notification.setUserId(message.getUserId());
+            notification.setServiceId(message.getServiceId());
+            notification.setOrderId(message.getOrderId());
+            notification.setTypeId(message.getTypeId());
+            notification.setContent(message.getContent());
             notification.setRead(false);
-            notification.setInformational(dto.getServiceId() == null && dto.getOrderId() == null);
+            notification.setInformational(message.getServiceId() == null && message.getOrderId() == null);
 
             notification = notificationRepository.save(notification);
 
             // Send push notifications to user's devices
-            List<UserDevice> devices = userDeviceRepository.findByUserId(userId);
+            List<UserDevice> devices = userDeviceRepository.findByUserId(message.getUserId());
             for (UserDevice device : devices) {
                 try {
                     pushNotificationService.sendPushNotification(device,
@@ -78,11 +74,11 @@ public class CreateNotificationCommandHandler implements CommandHandler<CreateNo
                 }
             }
 
-            return Either.right(mapToResponse(notification, notificationType));
-        } catch (NotificationException e) {
-            return Either.left(e.getMessage());
+            // Produce response to notification.events topic
+            NotificationResponseDTO response = mapToResponse(notification, notificationType);
+            kafkaTemplate.send("notification.events", response);
         } catch (Exception e) {
-            return Either.left("Failed to create notification: " + e.getMessage());
+            System.err.println("Failed to process notification message: " + e.getMessage());
         }
     }
 
